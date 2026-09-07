@@ -34,6 +34,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: preparo oficial - delegar o cgroup (jaula do Linux)
+        # Diagnostico de 07/09 (run 34163653584): 117 dos 217 vermelhos eram
+        # AMBIENTE e somem com este preparo. Sem ele o placar assusta a toa.
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" /sys/fs/cgroup 2>/dev/null || true
+          echo "+cpu +memory +pids" | sudo tee /sys/fs/cgroup/cgroup.subtree_control > /dev/null 2>&1 || true
       - name: pastas de estado que a maquina do GitHub nao traz
         run: mkdir -p "$HOME/.local/state" "$HOME/.local/share" "$HOME/.cache" "$HOME/.config"
       - name: bateria em volta ate o fim da perna (log so com contagens)
