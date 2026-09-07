@@ -1,47 +1,14 @@
 name: diagnostico dos vermelhos
-# Roda a MESMA suite em dois ambientes (cru x preparo oficial), duas vezes cada.
-# A saida completa so sai CRIPTOGRAFADA (o log e publico; o codigo, nao).
+# v2: escolhe o galho e roda `npm run build` antes (7 vermelhos pediam isso).
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      galho:
+        description: "galho do repositorio privado a testar"
+        required: false
+        default: "onda-portoes-0409"
 permissions: {}
 jobs:
-
-  cru:
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    env:
-      CEREBRO_TEST_TIMEOUT_MS: "120000"
-      SYSTEMROOT: "/"
-      TEMP: "/tmp"
-      TMP: "/tmp"
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: pedroigor2026/cerebro-criador-de-projetos
-          ref: onda-portoes-0409
-          token: ${{ secrets.CHAVE_DE_LEITURA }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - name: pastas de estado
-        run: mkdir -p "$HOME/.local/state" "$HOME/.local/share" "$HOME/.cache" "$HOME/.config"
-      - name: rodar duas vezes e trancar a saida no cofre
-        shell: bash
-        run: |
-          set +e
-          npm test > /tmp/out1.txt 2>&1; C1=$?
-          npm test > /tmp/out2.txt 2>&1; C2=$?
-          set -e
-          R1=$(grep -aoE '(tests|pass|fail|skipped) [0-9]+' /tmp/out1.txt | tr '\n' ' ' | tail -c 100)
-          R2=$(grep -aoE '(tests|pass|fail|skipped) [0-9]+' /tmp/out2.txt | tr '\n' ' ' | tail -c 100)
-          echo "repeticao 1: saida=$C1 :: $R1"
-          echo "repeticao 2: saida=$C2 :: $R2"
-          tar -czf /tmp/saidas.tgz -C /tmp out1.txt out2.txt
-          openssl enc -aes-256-cbc -pbkdf2 -pass "pass:${{ secrets.CHAVE_DE_LEITURA }}" -in /tmp/saidas.tgz | base64 -w 200 > /tmp/cofre.b64
-          echo "COFRE-INICIO-cru"
-          cat /tmp/cofre.b64
-          echo "COFRE-FIM-cru"
-
 
   oficial:
     runs-on: ubuntu-latest
@@ -55,13 +22,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: pedroigor2026/cerebro-criador-de-projetos
-          ref: onda-portoes-0409
+          ref: ${{ inputs.galho }}
           token: ${{ secrets.CHAVE_DE_LEITURA }}
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
       - name: pastas de estado
         run: mkdir -p "$HOME/.local/state" "$HOME/.local/share" "$HOME/.cache" "$HOME/.config"
+      - name: gerar o build/dist que os testes de bundle conferem
+        run: npm run build || echo "BUILD FALHOU (dito de proposito) - os testes de dist vao continuar vermelhos"
       - name: preparo oficial dos blocos - delegar o cgroup (jaula do Linux)
         run: |
           sudo chown -R "$(id -u):$(id -g)" /sys/fs/cgroup 2>/dev/null || true
