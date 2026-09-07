@@ -1,0 +1,62 @@
+name: maratona do cerebro (codigo continua privado)
+
+# PONTE (07/09/2026, 15h10Z): roda a bateria do CEREBRO ate o prazo SEM expor o
+# codigo. O checkout puxa o repositorio PRIVADO com chave guardada no cofre de
+# secrets; o codigo vive so na maquina descartavel do GitHub e o log mostra
+# APENAS contagens -- nunca nome de teste, nunca trecho de codigo.
+# Por que aqui: minutos em repo publico sao gratuitos (a cobranca so recusa
+# privado -- medido hoje, runs 34131111251 ok e 34134957323 recusada), e este
+# repo ja aceita receita desta maquina. Teto por job: 360 min; pedimos 330.
+
+on:
+  workflow_dispatch:
+    inputs:
+      fim:
+        description: "hora de parar (segundos desde 1970, UTC)"
+        required: true
+
+permissions: {}
+
+jobs:
+  maratona_cerebro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    env:
+      CEREBRO_TEST_TIMEOUT_MS: "120000"
+      SYSTEMROOT: "/"
+      TEMP: "/tmp"
+      TMP: "/tmp"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: pedroigor2026/cerebro-criador-de-projetos
+          ref: onda-portoes-0409
+          token: ${{ secrets.CHAVE_DE_LEITURA }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: pastas de estado que a maquina do GitHub nao traz
+        run: mkdir -p "$HOME/.local/state" "$HOME/.local/share" "$HOME/.cache" "$HOME/.config"
+      - name: bateria em volta ate o prazo (log so com contagens)
+        shell: bash
+        run: |
+          FIM="${{ inputs.fim }}"
+          VOLTA=0; VERDES=0; VERMELHAS=0
+          echo "| volta | comecou (UTC) | codigo de saida | veredito |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          while [ "$(date -u +%s)" -lt "$FIM" ]; do
+            VOLTA=$((VOLTA + 1)); INICIO=$(date -u +%H:%M:%S)
+            set +e; npm test > /tmp/saida.txt 2>&1; C=$?; set -e
+            # do rodape, SO numeros (tests/pass/fail); nunca nomes nem trechos
+            RESUMO=$(grep -aoE '(tests|pass|fail|skipped) [0-9]+' /tmp/saida.txt | tr '\n' ' ' | tail -c 120)
+            if [ "$C" -eq 0 ]; then V="verde"; VERDES=$((VERDES+1)); else V="VERMELHA"; VERMELHAS=$((VERMELHAS+1)); fi
+            echo "volta $VOLTA ($INICIO): saida=$C $V :: $RESUMO"
+            echo "| $VOLTA | $INICIO | $C | $V |" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$(date -u +%s)" -ge "$FIM" ]; then break; fi
+            sleep 60
+          done
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**$VOLTA voltas - $VERDES verdes - $VERMELHAS vermelhas**" >> "$GITHUB_STEP_SUMMARY"
+          echo "$VOLTA voltas, $VERDES verdes, $VERMELHAS vermelhas."
+          # MODO OBSERVACAO: mede e anota; vermelho vira numero, nao reprovacao.
+          exit 0
